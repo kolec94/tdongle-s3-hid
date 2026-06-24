@@ -1,0 +1,11 @@
+# Arduino build output
+/build/
+*.ino.bin
+*.ino.bootloader.bin
+*.ino.partitions.bin
+*.ino.elf
+*.ino.map
+
+# OS cruft
+Thumbs.db
+.DS_Store
