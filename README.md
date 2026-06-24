@@ -16,8 +16,8 @@ target.
 |------|------------|
 | `tdongle-hid-ble.ino` | Firmware: BLE (Nordic UART) → USB HID. Control machine stays on its own network. |
 | `tdongle-hid.ino`     | Firmware: WiFi access point + web page → USB HID. |
-| `control.html`        | Standalone Web Bluetooth control page for the BLE firmware. |
-| `web/index.html`      | Combined page: flash the dongle (ESP Web Tools) **and** drive it over BLE. |
+| `web/index.html`      | Root page: flash the dongle (ESP Web Tools) **and** drive it over BLE. |
+| `web/control.html`    | Standalone keyboard-only control page (same UI, linked from the root page). |
 | `web/manifest.json`   | ESP Web Tools manifest (expects the 4 `.bin` files alongside it). |
 | `collect-bins.ps1`    | Gathers the exported firmware binaries into `web/` for hosting. |
 

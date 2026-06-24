@@ -20,21 +20,9 @@
 </style>
 </head>
 <body>
-  <h1>T-Dongle S3 — USB-HID Keyboard over BLE</h1>
+  <h1>T-Dongle S3 — Remote Keyboard</h1>
+  <p class="hint">Plug the flashed dongle into the <em>target</em> computer, then connect over BLE (Win/Mac, Chrome/Edge). Need to flash a dongle first? <a href="./index.html">Go to the install page →</a></p>
 
-  <h2>1 · Install firmware (only once per dongle)</h2>
-  <p class="hint">Plug the dongle into <em>this</em> computer while holding its BOOT button, then click Install. Chrome/Edge only.</p>
-  <esp-web-install-button manifest="./manifest.json">
-    <button slot="activate">Install firmware</button>
-    <span slot="unsupported">Web Serial not supported — use desktop Chrome or Edge.</span>
-    <span slot="not-allowed">Open this page over https:// (or localhost).</span>
-  </esp-web-install-button>
-
-  <hr>
-
-  <h2>2 · Use it as a keyboard</h2>
-  <p class="hint">Plug the flashed dongle into the <em>target</em> computer. Then from any control machine (Win/Mac, Chrome/Edge) connect over BLE below.</p>
-  <p class="hint">Just want the keyboard, no flashing? <a href="./control.html">Open the standalone control page →</a></p>
   <div class="row">
     <button id="conn" onclick="connect()">Connect to dongle</button>
     <span id="status">disconnected</span>
@@ -53,7 +41,6 @@
   </div>
   <div id="log"></div>
 
-<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
 <script>
 const SERVICE='6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const RX='6e400002-b5a3-f393-e0a9-e50e24dcca9e';
