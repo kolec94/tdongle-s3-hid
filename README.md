@@ -14,8 +14,9 @@ target.
 
 | File | What it is |
 |------|------------|
-| `tdongle-hid-ble.ino` | Firmware: BLE (Nordic UART) → USB HID. Control machine stays on its own network. |
-| `tdongle-hid.ino`     | Firmware: WiFi access point + web page → USB HID. |
+| `tdongle-hid-dual/`   | **Recommended firmware.** BLE *and* WiFi AP at once, on-screen WiFi password + BLE PIN, LCD status, exclusive-mode (whichever connects disables the other). This is what the hosted `.bin` files are built from. |
+| `tdongle-hid-ble/`    | Minimal firmware: BLE (Nordic UART) → USB HID only. |
+| `tdongle-hid-wifi/`   | Minimal firmware: WiFi access point + web page → USB HID only. |
 | `web/index.html`      | Root page: flash the dongle (ESP Web Tools) **and** drive it over BLE. |
 | `web/control.html`    | Standalone keyboard-only control page (same UI, linked from the root page). |
 | `web/manifest.json`   | ESP Web Tools manifest (points at the 4 `.bin` files in `web/`). |
@@ -38,8 +39,12 @@ target.
    - USB Mode: **USB-OTG (TinyUSB)**
    - Partition Scheme: one with BLE room, e.g. *16M Flash (3MB APP / 9.9MB FATFS)*
    - Flash Size: **16MB**
-2. Open `tdongle-hid-ble.ino` (or `tdongle-hid.ino` for the WiFi version), hold the
-   dongle's **BOOT** button while plugging in, then **Upload**.
+2. Open `tdongle-hid-dual/tdongle-hid-dual.ino` (the full BLE+WiFi build; or one of
+   the minimal `tdongle-hid-ble` / `tdongle-hid-wifi` sketches), hold the dongle's
+   **BOOT** button while plugging in, then **Upload**.
+
+   The dual build needs the **Adafruit GFX** and **Adafruit ST7735 and ST7789**
+   libraries for the LCD (Library Manager, or `arduino-cli lib install`).
 
 That flashes the dongle directly — you don't need the `.bin` files for this path.
 
@@ -53,7 +58,7 @@ produce four files in `web/`: `bootloader.bin`, `partitions.bin`, `boot_app0.bin
 
 ### Option A — Arduino IDE
 
-1. Open `tdongle-hid-ble.ino`, set the board options as in *Build & flash* above.
+1. Open `tdongle-hid-dual/tdongle-hid-dual.ino`, set the board options as in *Build & flash* above.
 2. **Sketch → Export Compiled Binary** (writes a `build/` folder next to the sketch).
 3. Run the collector:
    ```powershell
@@ -69,12 +74,13 @@ arduino-cli config add board_manager.additional_urls \
   https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
 arduino-cli core update-index
 arduino-cli core install esp32:esp32
+arduino-cli lib install "Adafruit GFX Library" "Adafruit ST7735 and ST7789 Library"
 
 # build with the USB-OTG (TinyUSB) + CDC-on-boot + BLE-capable partition options
 arduino-cli compile \
   --fqbn "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=cdc,PartitionScheme=app3M_fat9M_16MB,FlashSize=16M" \
-  --output-dir build \
-  tdongle-hid-ble.ino
+  --output-dir tdongle-hid-dual/build \
+  tdongle-hid-dual
 
 # gather the 4 bins into web\ (PowerShell)
 .\collect-bins.ps1
@@ -88,5 +94,11 @@ Then commit the updated `web/*.bin` (and re-host) to refresh the one-click flash
 - Web Bluetooth + Web Serial work in **desktop Chrome / Edge** (Win, macOS, Linux)
   and Android Chrome. Not Safari/Firefox; not iOS (use a BLE UART app there).
 - HID keycodes assume a **US keyboard layout** on the target.
-- No auth on the BLE link as written — anyone in range can connect. Add a
-  passkey/bonding if you need it locked down.
+- **Dual firmware security:** the WiFi password and BLE PIN are random per boot and
+  shown only on the LCD. Set `REQUIRE_BLE_PAIRING 0` in the sketch to drop the BLE
+  PIN (Just Works) if pairing gives you trouble on a particular OS.
+- **LCD config:** the dual sketch assumes the T-Dongle S3 ST7735 pinout and uses
+  `INITR_MINI160x80` + `invertDisplay(true)`. If the screen is blank, offset, or has
+  wrong colors, adjust the init tab / rotation / inversion at the top of `setup()`.
+- The minimal `tdongle-hid-ble` / `tdongle-hid-wifi` sketches have **no auth** as
+  written — fine for quick use, but add a passkey/password if you need it locked down.

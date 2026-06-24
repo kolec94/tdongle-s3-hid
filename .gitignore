@@ -1,5 +1,5 @@
 # Arduino build output
-/build/
+build/
 *.ino.bin
 *.ino.bootloader.bin
 *.ino.partitions.bin
