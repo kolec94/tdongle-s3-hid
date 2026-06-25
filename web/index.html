@@ -3,38 +3,50 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>T-Dongle S3 Keyboard</title>
+<title>ESP32-S3 Keyboard Dongle</title>
 <style>
-  body{font-family:system-ui,sans-serif;max-width:680px;margin:24px auto;padding:0 16px;background:#111;color:#eee}
-  h1{font-size:1.3rem} h2{font-size:1rem;color:#9ca3af;margin-top:28px}
-  textarea{width:100%;height:150px;font-size:16px;padding:10px;box-sizing:border-box;
-           background:#1c1c1c;color:#eee;border:1px solid #444;border-radius:8px}
+  body{font-family:system-ui,sans-serif;max-width:700px;margin:24px auto;padding:0 16px;background:#111;color:#eee}
+  h1{font-size:1.3rem}h2{font-size:1rem;color:#9ca3af;margin-top:26px}
+  textarea{width:100%;height:150px;font-size:16px;padding:10px;box-sizing:border-box;background:#1c1c1c;color:#eee;border:1px solid #444;border-radius:8px}
   .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
   button{font-size:15px;padding:10px 16px;border:0;border-radius:8px;cursor:pointer;background:#3b82f6;color:#fff}
-  button.alt{background:#374151} button:disabled{opacity:.4;cursor:not-allowed}
+  button.alt{background:#374151}button:disabled{opacity:.4;cursor:not-allowed}
   label{display:flex;align-items:center;gap:6px;font-size:14px}
   #log{margin-top:12px;font-size:13px;color:#9ca3af}
-  hr{border:0;border-top:1px solid #333;margin:28px 0}
-  .hint{font-size:13px;color:#9ca3af}
-  a{color:#60a5fa}
+  hr{border:0;border-top:1px solid #333;margin:26px 0}
+  .hint{font-size:13px;color:#9ca3af}a{color:#60a5fa}
+  .board{border:1px solid #2a2f37;border-radius:10px;padding:12px 14px;margin:10px 0}
+  .board b{font-size:15px}.board .meta{font-size:12px;color:#7d8590;margin:2px 0 8px}
 </style>
 </head>
 <body>
-  <h1>T-Dongle S3 — USB-HID Keyboard over BLE</h1>
+  <h1>ESP32-S3 — USB-HID Keyboard Dongle</h1>
+  <p class="hint">A plug-in USB keyboard you drive over WiFi or Bluetooth. Works on three ESP32-S3 boards.</p>
 
-  <h2>1 · Install firmware (only once per dongle)</h2>
-  <p class="hint">Plug the dongle into <em>this</em> computer while holding its BOOT button, then click Install. Chrome/Edge only.</p>
-  <esp-web-install-button manifest="./manifest.json">
-    <button slot="activate">Install firmware</button>
-    <span slot="unsupported">Web Serial not supported — use desktop Chrome or Edge.</span>
-    <span slot="not-allowed">Open this page over https:// (or localhost).</span>
-  </esp-web-install-button>
+  <h2>1 · Install firmware (pick your board)</h2>
+  <p class="hint">Hold the board's <b>BOOT</b> button, plug it into <em>this</em> computer, then click Install. Chrome/Edge only.</p>
+
+  <div class="board">
+    <b>Waveshare ESP32-S3-Geek</b><div class="meta">USB-A plug · 1.14" ST7789 screen</div>
+    <esp-web-install-button manifest="./manifest-geek.json"><button slot="activate">Install (Geek)</button>
+      <span slot="unsupported">Use desktop Chrome/Edge.</span><span slot="not-allowed">Open over https://</span></esp-web-install-button>
+  </div>
+  <div class="board">
+    <b>LilyGo T-Dongle S3</b><div class="meta">USB-A plug · 0.96" ST7735 screen</div>
+    <esp-web-install-button manifest="./manifest-lilygo.json"><button slot="activate">Install (T-Dongle)</button>
+      <span slot="unsupported">Use desktop Chrome/Edge.</span><span slot="not-allowed">Open over https://</span></esp-web-install-button>
+  </div>
+  <div class="board">
+    <b>M5Stack AtomS3U</b><div class="meta">USB-A plug · no screen · WiFi pass <code>type12345</code></div>
+    <esp-web-install-button manifest="./manifest-atoms3u.json"><button slot="activate">Install (AtomS3U)</button>
+      <span slot="unsupported">Use desktop Chrome/Edge.</span><span slot="not-allowed">Open over https://</span></esp-web-install-button>
+  </div>
 
   <hr>
 
   <h2>2 · Use it as a keyboard</h2>
-  <p class="hint">Plug the flashed dongle into the <em>target</em> computer. Then from any control machine (Win/Mac, Chrome/Edge) connect over BLE below.</p>
-  <p class="hint">Just want the keyboard, no flashing? <a href="./control.html">Open the standalone control page →</a></p>
+  <p class="hint">Plug the flashed board into the <em>target</em> computer. Connect over BLE below, or join its WiFi and open <code>http://192.168.4.1</code>.</p>
+  <p class="hint">Prefer a dedicated keyboard page? <a href="./control.html">Open the standalone control page →</a></p>
   <div class="row">
     <button id="conn" onclick="connect()">Connect to dongle</button>
     <span id="status">disconnected</span>
@@ -59,36 +71,32 @@ const SERVICE='6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const RX='6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 let rxChar=null;
 function setConnected(on){
-  document.getElementById('status').textContent = on?'connected ✓':'disconnected';
+  document.getElementById('status').textContent=on?'connected ✓':'disconnected';
   document.getElementById('send').disabled=!on;
   document.querySelectorAll('.keybtn').forEach(b=>b.disabled=!on);
 }
-function log(m){ document.getElementById('log').textContent=m; }
+function log(m){document.getElementById('log').textContent=m;}
 async function connect(){
-  if(!navigator.bluetooth){ log('Web Bluetooth not supported — use Chrome/Edge.'); return; }
+  if(!navigator.bluetooth){log('Web Bluetooth not supported — use Chrome/Edge.');return;}
   try{
     const dev=await navigator.bluetooth.requestDevice({filters:[{services:[SERVICE]}]});
     dev.addEventListener('gattserverdisconnected',()=>{setConnected(false);rxChar=null;});
     const server=await dev.gatt.connect();
     const svc=await server.getPrimaryService(SERVICE);
     rxChar=await svc.getCharacteristic(RX);
-    setConnected(true); log('connected to '+(dev.name||'device'));
-  }catch(e){ log('connect failed: '+e.message); }
+    setConnected(true);log('connected to '+(dev.name||'device'));
+  }catch(e){log('connect failed: '+e.message);}
 }
-async function writeChunked(bytes){
-  for(let i=0;i<bytes.length;i+=180){ await rxChar.writeValue(bytes.slice(i,i+180)); }
-}
+async function writeChunked(bytes){for(let i=0;i<bytes.length;i+=180){await rxChar.writeValue(bytes.slice(i,i+180));}}
 async function send(){
-  if(!rxChar) return;
+  if(!rxChar)return;
   let t=document.getElementById('txt').value;
-  if(document.getElementById('enter').checked) t+='\n';
-  try{ await writeChunked(new TextEncoder().encode(t)); log('sent ✓'); }
-  catch(e){ log('send failed: '+e.message); }
+  if(document.getElementById('enter').checked)t+='\n';
+  try{await writeChunked(new TextEncoder().encode(t));log('sent ✓');}catch(e){log('send failed: '+e.message);}
 }
 async function cmd(name){
-  if(!rxChar) return;
-  try{ await rxChar.writeValue(new TextEncoder().encode('\x01'+name)); log('sent '+name); }
-  catch(e){ log('send failed: '+e.message); }
+  if(!rxChar)return;
+  try{await rxChar.writeValue(new TextEncoder().encode('\x01'+name));log('sent '+name);}catch(e){log('send failed: '+e.message);}
 }
 </script>
 </body>

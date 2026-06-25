@@ -1,30 +1,30 @@
-# Collects the 4 firmware binaries that ESP Web Tools needs into .\web\
+# Builds the keyboard firmware for all three boards and collects the flashable
+# binaries into web\<board>\ for the ESP Web Tools installer.
 #
-# First, in Arduino IDE: open tdongle-hid-ble.ino, set the board/USB options,
-# then Sketch -> "Export Compiled Binary". That writes the .bin files into a
-# build\ subfolder next to the sketch. Then run this script.
+# Requires arduino-cli + the esp32 core + Adafruit GFX/ST7735/ST7789 libraries.
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
-$web  = Join-Path $root 'web'
+$fqbn = "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=cdc,PartitionScheme=app3M_fat9M_16MB,FlashSize=16M"
+$sketch = Join-Path $root 'firmware\keyboard-dongle'
 
-# 1. Find the exported app/bootloader/partitions bins (newest build folder)
-$app = Get-ChildItem -Path $root -Recurse -Filter '*.ino.bin' |
-       Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if (-not $app) { throw "No *.ino.bin found. Run Sketch -> Export Compiled Binary first." }
-$buildDir = $app.DirectoryName
-Write-Host "Using build folder: $buildDir"
-
-Copy-Item (Join-Path $buildDir '*.ino.bin')            (Join-Path $web 'firmware.bin')   -Force
-Copy-Item (Join-Path $buildDir '*.ino.bootloader.bin') (Join-Path $web 'bootloader.bin') -Force
-Copy-Item (Join-Path $buildDir '*.ino.partitions.bin') (Join-Path $web 'partitions.bin') -Force
-
-# 2. boot_app0.bin ships with the esp32 core (not the sketch). Locate newest.
+# boot_app0 ships with the esp32 core (same for every build)
 $pkg = Join-Path $env:LOCALAPPDATA 'Arduino15\packages\esp32\hardware\esp32'
-$boot = Get-ChildItem -Path $pkg -Recurse -Filter 'boot_app0.bin' -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if (-not $boot) { throw "boot_app0.bin not found under $pkg" }
-Copy-Item $boot.FullName (Join-Path $web 'boot_app0.bin') -Force
+$bootApp0 = Get-ChildItem -Path $pkg -Recurse -Filter 'boot_app0.bin' -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if (-not $bootApp0) { throw "boot_app0.bin not found under $pkg" }
 
-Write-Host "Done. web\ now contains: firmware.bin, bootloader.bin, partitions.bin, boot_app0.bin"
-Get-ChildItem $web -Filter *.bin | Select-Object Name, Length
+$boards = @{ '1' = 'lilygo'; '2' = 'geek'; '3' = 'atoms3u' }
+foreach ($id in $boards.Keys) {
+  $name = $boards[$id]
+  $build = Join-Path $sketch "build-$name"
+  $web   = Join-Path $root "web\$name"
+  Write-Host "=== Building $name (BOARD=$id) ==="
+  arduino-cli compile --fqbn $fqbn --build-property "compiler.cpp.extra_flags=-DBOARD=$id" --output-dir $build $sketch
+  New-Item -ItemType Directory -Force $web | Out-Null
+  Copy-Item (Join-Path $build '*.ino.bin')            (Join-Path $web 'firmware.bin')   -Force
+  Copy-Item (Join-Path $build '*.ino.bootloader.bin') (Join-Path $web 'bootloader.bin') -Force
+  Copy-Item (Join-Path $build '*.ino.partitions.bin') (Join-Path $web 'partitions.bin') -Force
+  Copy-Item $bootApp0.FullName                        (Join-Path $web 'boot_app0.bin') -Force
+}
+Write-Host "Done. web\{lilygo,geek,atoms3u}\ each contain the 4 bins."

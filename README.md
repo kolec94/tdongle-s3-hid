@@ -1,104 +1,74 @@
-# T-Dongle S3 — USB-HID Keyboard over BLE / WiFi
+# ESP32-S3 USB-HID Keyboard Dongle
 
-Turn a [LILYGO T-Dongle S3](https://www.lilygo.cc/products/t-dongle-s3) (ESP32-S3)
-into a remote keyboard: plug it into a target computer where it enumerates as a
-USB HID keyboard, then send text to it from another machine over **BLE** (no
-network needed) or **WiFi**. The text is injected as real keystrokes into the
-target.
+Turn an **ESP32-S3** board into a remote keyboard: plug it into a target computer
+where it enumerates as a real **USB HID keyboard**, then send text to it from another
+machine over **BLE** or **WiFi**. The text is injected as live keystrokes.
 
 ```
-[Control machine] --BLE / WiFi--> [T-Dongle S3] --USB HID keyboard--> [Target PC]
+[Control machine] --BLE / WiFi--> [ESP32-S3 dongle] --USB HID keyboard--> [Target PC]
 ```
 
-## Contents
+> Needs an **ESP32-S3** (or S2). The USB-keyboard trick requires native **USB-OTG**,
+> which the S-series has and the C-series (C3/C5/C6) does **not**.
 
-| File | What it is |
-|------|------------|
-| `tdongle-hid-dual/`   | **Recommended firmware.** BLE *and* WiFi AP at once, on-screen WiFi password + BLE PIN, LCD status, exclusive-mode (whichever connects disables the other). This is what the hosted `.bin` files are built from. |
-| `tdongle-hid-ble/`    | Minimal firmware: BLE (Nordic UART) → USB HID only. |
-| `tdongle-hid-wifi/`   | Minimal firmware: WiFi access point + web page → USB HID only. |
-| `web/index.html`      | Root page: flash the dongle (ESP Web Tools) **and** drive it over BLE. |
-| `web/control.html`    | Standalone keyboard-only control page (same UI, linked from the root page). |
-| `web/manifest.json`   | ESP Web Tools manifest (points at the 4 `.bin` files in `web/`). |
-| `web/*.bin`           | Pre-built firmware images used by the browser flasher (optional; rebuildable from source — see below). |
-| `collect-bins.ps1`    | Gathers freshly built firmware binaries into `web/` for hosting. |
+## Supported boards
 
-## Quick start (no toolchain needed)
+One firmware (`firmware/keyboard-dongle`) targets all three — pick yours with a single
+`#define BOARD` (or `-DBOARD=n`). The only difference between them is the screen.
 
-1. Open the hosted page in **desktop Chrome or Edge**:
-   **https://kolec94.github.io/tdongle-s3-hid/web/**
-2. Hold the dongle's **BOOT** button, plug it into this computer, click **Install firmware**.
-3. Move the dongle to the **target** computer. Back on the page (or
-   [the standalone control page](https://kolec94.github.io/tdongle-s3-hid/web/control.html)),
-   click **Connect to dongle**, type, and **Send**.
+| Board | `BOARD` | Screen | Notes |
+|-------|---------|--------|-------|
+| **LilyGo T-Dongle S3**     | `1` | ST7735 80×160  | USB-A plug + screen |
+| **Waveshare ESP32-S3-Geek**| `2` | ST7789 240×135 | USB-A plug + screen (default) |
+| **M5Stack AtomS3U**        | `3` | none           | USB-A plug; fixed WiFi creds, no on-screen display |
 
-## Build & flash from source (Arduino IDE)
+## Quick start (one-click flasher, no toolchain)
 
-1. Arduino IDE with the **esp32 core 3.x** installed. Board **ESP32S3 Dev Module** with:
-   - USB CDC On Boot: **Enabled**
-   - USB Mode: **USB-OTG (TinyUSB)**
-   - Partition Scheme: one with BLE room, e.g. *16M Flash (3MB APP / 9.9MB FATFS)*
-   - Flash Size: **16MB**
-2. Open `tdongle-hid-dual/tdongle-hid-dual.ino` (the full BLE+WiFi build; or one of
-   the minimal `tdongle-hid-ble` / `tdongle-hid-wifi` sketches), hold the dongle's
-   **BOOT** button while plugging in, then **Upload**.
+1. In **Chrome/Edge**, open **https://kolec94.github.io/tdongle-s3-hid/web/**
+2. Pick your board, hold the board's **BOOT** button, plug it in, click **Install**.
+3. Plug it into the **target** computer. With a screen, it shows the WiFi
+   name/password; screenless boards use a fixed password (below).
+4. Connect from your phone/laptop over WiFi or BLE and type.
 
-   The dual build needs the **Adafruit GFX** and **Adafruit ST7735 and ST7789**
-   libraries for the LCD (Library Manager, or `arduino-cli lib install`).
+**Screenless (AtomS3U) default credentials:** WiFi SSID `Keeb-XXXX` (XXXX = chip id,
+visible in the WiFi list), password **`type12345`**, page at `http://192.168.4.1`.
 
-That flashes the dongle directly — you don't need the `.bin` files for this path.
+## Build from source
 
-## Rebuilding the flashable `.bin` files (optional)
+Arduino IDE or arduino-cli, **esp32 core 3.x**. Board **ESP32S3 Dev Module** with:
+USB CDC On Boot **Enabled**, USB Mode **USB-OTG (TinyUSB)**, Partition Scheme
+*16M Flash (3MB APP/9.9MB FATFS)*, Flash Size **16MB**. Libraries: **Adafruit GFX**,
+**Adafruit ST7735 and ST7789**.
 
-The `web/` folder ships pre-built binaries so the browser **Install firmware**
-button works without any toolchain. If you'd rather build them yourself (to audit
-the firmware, or after changing the source), regenerate them one of two ways. Both
-produce four files in `web/`: `bootloader.bin`, `partitions.bin`, `boot_app0.bin`,
-`firmware.bin`.
-
-### Option A — Arduino IDE
-
-1. Open `tdongle-hid-dual/tdongle-hid-dual.ino`, set the board options as in *Build & flash* above.
-2. **Sketch → Export Compiled Binary** (writes a `build/` folder next to the sketch).
-3. Run the collector:
-   ```powershell
-   .\collect-bins.ps1
-   ```
-
-### Option B — arduino-cli (headless)
+Set your board at the top of `firmware/keyboard-dongle/keyboard-dongle.ino`
+(`#define BOARD ...`), then upload. Or headless per board:
 
 ```bash
-# one-time setup
-arduino-cli config init
-arduino-cli config add board_manager.additional_urls \
-  https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-arduino-cli core update-index
-arduino-cli core install esp32:esp32
-arduino-cli lib install "Adafruit GFX Library" "Adafruit ST7735 and ST7789 Library"
-
-# build with the USB-OTG (TinyUSB) + CDC-on-boot + BLE-capable partition options
 arduino-cli compile \
   --fqbn "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=cdc,PartitionScheme=app3M_fat9M_16MB,FlashSize=16M" \
-  --output-dir tdongle-hid-dual/build \
-  tdongle-hid-dual
-
-# gather the 4 bins into web\ (PowerShell)
-.\collect-bins.ps1
+  --build-property "compiler.cpp.extra_flags=-DBOARD=2" \
+  firmware/keyboard-dongle
+# BOARD=1 LilyGo, 2 Geek, 3 AtomS3U
 ```
 
-Then commit the updated `web/*.bin` (and re-host) to refresh the one-click flasher.
+## Files
+
+| Path | What |
+|------|------|
+| `firmware/keyboard-dongle/` | The one firmware, board-selectable via `BOARD`. |
+| `web/index.html` | Hosted page: flash any board + drive it over BLE. |
+| `web/control.html` | Standalone BLE keyboard control page. |
+| `web/<board>/` + `web/manifest-*.json` | Pre-built bins per board for the flasher. |
+| `collect-bins.ps1` | Builds all three boards' bins into `web/`. |
 
 ## Notes / caveats
 
-- ESP32-S3 is **BLE only** (no Bluetooth Classic / SPP).
-- Web Bluetooth + Web Serial work in **desktop Chrome / Edge** (Win, macOS, Linux)
-  and Android Chrome. Not Safari/Firefox; not iOS (use a BLE UART app there).
+- **BLE pairing security is OFF by default** (`REQUIRE_BLE_PAIRING 0`) so the device
+  boots reliably and BLE control just works. Set it to `1` (needs a screen) to require
+  an on-screen pairing PIN — that path is less tested on these exact boards.
 - HID keycodes assume a **US keyboard layout** on the target.
-- **Dual firmware security:** the WiFi password and BLE PIN are random per boot and
-  shown only on the LCD. Set `REQUIRE_BLE_PAIRING 0` in the sketch to drop the BLE
-  PIN (Just Works) if pairing gives you trouble on a particular OS.
-- **LCD config:** the dual sketch assumes the T-Dongle S3 ST7735 pinout and uses
-  `INITR_MINI160x80` + `invertDisplay(true)`. If the screen is blank, offset, or has
-  wrong colors, adjust the init tab / rotation / inversion at the top of `setup()`.
-- The minimal `tdongle-hid-ble` / `tdongle-hid-wifi` sketches have **no auth** as
-  written — fine for quick use, but add a passkey/password if you need it locked down.
+- The **screen config** (ST7735/ST7789 rotation, inversion, offsets) is set from each
+  board's documented pinout but verify on hardware — if blank/garbled, tweak the
+  `#if USE_ST77xx` block in `setup()`. USB-HID + WiFi + BLE work regardless of the screen.
+- Whichever transport (BLE or WiFi) connects first disables the other until it
+  disconnects, so only one control path is live at a time.
