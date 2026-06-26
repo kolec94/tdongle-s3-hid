@@ -5,8 +5,10 @@
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
-$fqbn = "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=cdc,PartitionScheme=app3M_fat9M_16MB,FlashSize=16M"
 $sketch = Join-Path $root 'firmware\keyboard-dongle'
+# 16MB-flash boards (LilyGo, Geek) vs the 8MB AtomS3U
+$fqbn16 = "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=cdc,PartitionScheme=app3M_fat9M_16MB,FlashSize=16M"
+$fqbn8  = "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=cdc,PartitionScheme=default_8MB,FlashSize=8M"
 
 # boot_app0 ships with the esp32 core (same for every build)
 $pkg = Join-Path $env:LOCALAPPDATA 'Arduino15\packages\esp32\hardware\esp32'
@@ -19,6 +21,7 @@ foreach ($id in $boards.Keys) {
   $name = $boards[$id]
   $build = Join-Path $sketch "build-$name"
   $web   = Join-Path $root "web\$name"
+  $fqbn  = if ($name -eq 'atoms3u') { $fqbn8 } else { $fqbn16 }
   Write-Host "=== Building $name (BOARD=$id) ==="
   arduino-cli compile --fqbn $fqbn --build-property "compiler.cpp.extra_flags=-DBOARD=$id" --output-dir $build $sketch
   New-Item -ItemType Directory -Force $web | Out-Null

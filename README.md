@@ -51,6 +51,10 @@ arduino-cli compile \
 # BOARD=1 LilyGo, 2 Geek, 3 AtomS3U
 ```
 
+> **AtomS3U has only 8 MB flash** (vs 16 MB on the others), so build it with
+> `FlashSize=8M` + `PartitionScheme=default_8MB`. `collect-bins.ps1` does this
+> automatically per board.
+
 ## Files
 
 | Path | What |
