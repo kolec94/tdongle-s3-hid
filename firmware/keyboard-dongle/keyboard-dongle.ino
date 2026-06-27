@@ -129,6 +129,8 @@ textarea{width:100%;height:150px;font-size:16px;padding:10px;box-sizing:border-b
 button{font-size:15px;padding:10px 16px;border:0;border-radius:8px;cursor:pointer;background:#3b82f6;color:#fff}
 button.alt{background:#374151}label{display:flex;align-items:center;gap:6px;font-size:14px}
 #log{margin-top:12px;font-size:13px;color:#9ca3af}
+h2{font-size:1rem;color:#9ca3af;margin-top:22px}
+#pad{touch-action:none;height:170px;margin-top:10px;background:#1c1c1c;border:1px dashed #555;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#666;user-select:none;font-size:14px}
 </style></head><body>
 <h1>ESP32-S3 — Remote Keyboard (WiFi)</h1>
 <textarea id="txt" placeholder="Type text to send to the target computer..."></textarea>
@@ -140,11 +142,33 @@ button.alt{background:#374151}label{display:flex;align-items:center;gap:6px;font
 <button class="alt" onclick="key('ESC')">Esc</button>
 <button class="alt" onclick="key('WIN')">Win/Cmd</button>
 <button class="alt" onclick="key('CTRL_ALT_DEL')">Ctrl+Alt+Del</button></div>
+<h2>Mouse</h2>
+<div id="pad">drag to move the pointer &#8226; tap to left-click</div>
+<div class="row"><label>Sensitivity <input type="range" id="sens" min="0.3" max="5" step="0.1" value="1.6"> <span id="sensv">1.6</span>x</label></div>
+<div class="row">
+<button class="alt" onclick="mclick(1)">Left</button>
+<button class="alt" onclick="mclick(2)">Right</button>
+<button class="alt" onclick="mclick(4)">Middle</button>
+<button class="alt" onclick="mscroll(-3)">Scroll up</button>
+<button class="alt" onclick="mscroll(3)">Scroll down</button></div>
 <div id="log"></div><script>
 async function post(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-Type':'text/plain'},body:b});
 document.getElementById('log').textContent=r.ok?'sent':'error '+r.status;}
 function send(){let t=document.getElementById('txt').value;if(document.getElementById('enter').checked)t+='\n';post('/type',t);}
 function key(k){post('/key',k);}
+let SENS=parseFloat(localStorage.getItem('sens')||'1.6');
+const sens=document.getElementById('sens'),sensv=document.getElementById('sensv');
+sens.value=SENS;sensv.textContent=SENS.toFixed(1);
+sens.addEventListener('input',()=>{SENS=parseFloat(sens.value);sensv.textContent=SENS.toFixed(1);localStorage.setItem('sens',sens.value);});
+function clamp(v){v=v|0;return v<-127?-127:v>127?127:v;}
+function mpost(a){fetch('/mouse',{method:'POST',body:new Uint8Array(a)});}
+function mclick(b){mpost([2,0x63,b]);}
+function mscroll(a){mpost([2,0x73,(clamp(a)+128)&255]);}
+const pad=document.getElementById('pad');let pd=false,lx=0,ly=0,ax=0,ay=0,mv=false;
+pad.addEventListener('pointerdown',e=>{pd=true;lx=e.clientX;ly=e.clientY;mv=false;ax=ay=0;pad.setPointerCapture(e.pointerId);e.preventDefault();});
+pad.addEventListener('pointermove',e=>{if(!pd)return;ax+=e.clientX-lx;ay+=e.clientY-ly;lx=e.clientX;ly=e.clientY;if(Math.abs(ax)>3||Math.abs(ay)>3)mv=true;});
+pad.addEventListener('pointerup',e=>{if(!pd)return;pd=false;if(!mv)mclick(1);});
+setInterval(()=>{if(!ax&&!ay)return;const dx=clamp(Math.round(ax*SENS)),dy=clamp(Math.round(ay*SENS));ax=0;ay=0;if(dx||dy)mpost([2,0x6d,(dx+128)&255,(dy+128)&255]);},40);
 </script></body></html>
 )HTML";
 
