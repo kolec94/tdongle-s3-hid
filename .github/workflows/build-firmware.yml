@@ -1,0 +1,75 @@
+name: Build firmware
+
+# Builds all three boards and commits the refreshed flasher bins back into web/.
+# Triggers on firmware changes (or manually). The manual collect-bins.ps1 still works
+# locally; this just keeps the hosted flasher in sync on every push.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'firmware/**'
+      - '.github/workflows/build-firmware.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache arduino15
+        uses: actions/cache@v4
+        with:
+          path: ~/.arduino15
+          key: arduino15-esp32-${{ hashFiles('.github/workflows/build-firmware.yml') }}
+
+      - name: Install arduino-cli + ESP32 core + libraries
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh -s
+          echo "$GITHUB_WORKSPACE/bin" >> "$GITHUB_PATH"
+          export PATH="$GITHUB_WORKSPACE/bin:$PATH"
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls \
+            https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli lib install "Adafruit GFX Library" "Adafruit ST7735 and ST7789 Library"
+
+      - name: Build all three boards
+        run: |
+          set -e
+          FQBN16="esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=cdc,PartitionScheme=app3M_fat9M_16MB,FlashSize=16M"
+          FQBN8="esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=cdc,PartitionScheme=default_8MB,FlashSize=8M"
+          BOOT=$(find "$HOME/.arduino15/packages/esp32" -name boot_app0.bin | head -1)
+          build() {
+            name=$1; id=$2; fqbn=$3
+            echo "::group::build $name (BOARD=$id)"
+            arduino-cli compile --fqbn "$fqbn" \
+              --build-property "compiler.cpp.extra_flags=-DBOARD=$id" \
+              --output-dir "build/$name" firmware/keyboard-dongle
+            mkdir -p "web/$name"
+            cp build/$name/*.ino.bin            "web/$name/firmware.bin"
+            cp build/$name/*.ino.bootloader.bin "web/$name/bootloader.bin"
+            cp build/$name/*.ino.partitions.bin "web/$name/partitions.bin"
+            cp "$BOOT"                           "web/$name/boot_app0.bin"
+            echo "::endgroup::"
+          }
+          build lilygo  1 "$FQBN16"
+          build geek    2 "$FQBN16"
+          build atoms3u 3 "$FQBN8"
+
+      - name: Commit refreshed bins
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add web/*/*.bin
+          if git diff --cached --quiet; then
+            echo "bins unchanged"
+          else
+            git commit -m "ci: rebuild firmware bins [skip ci]"
+            git push
+          fi

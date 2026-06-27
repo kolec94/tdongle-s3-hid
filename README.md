@@ -41,7 +41,8 @@ the Geek); the screen/button wiring is what may need a small per-board tweak.
 2. Pick your board, hold the board's **BOOT** button, plug it in, click **Install**.
 3. Plug it into the **target** computer. With a screen, it shows the WiFi
    name/password; screenless boards use a fixed password (below).
-4. Connect from your phone/laptop over WiFi or BLE and type.
+4. Connect from your phone/laptop over WiFi or BLE to **type and move the mouse**.
+   Press the board's button to switch **WiFi ⇄ BLE** (screen shows the active mode).
 
 **Screenless (AtomS3U) default credentials:** WiFi SSID `Keeb-XXXX` (XXXX = chip id,
 visible in the WiFi list), password **`type12345`**, page at `http://192.168.4.1`.
@@ -68,6 +69,11 @@ arduino-cli compile \
 > `FlashSize=8M` + `PartitionScheme=default_8MB`. `collect-bins.ps1` does this
 > automatically per board.
 
+**CI:** a GitHub Action (`.github/workflows/build-firmware.yml`) rebuilds all three
+boards and commits the refreshed `web/<board>/` bins on any push that touches
+`firmware/`. So a normal `git push` keeps the hosted flasher in sync — `collect-bins.ps1`
+stays for local/offline builds.
+
 ## Files
 
 | Path | What |
@@ -76,16 +82,29 @@ arduino-cli compile \
 | `web/index.html` | Hosted page: flash any board + drive it over BLE. |
 | `web/control.html` | Standalone BLE keyboard control page. |
 | `web/<board>/` + `web/manifest-*.json` | Pre-built bins per board for the flasher. |
-| `collect-bins.ps1` | Builds all three boards' bins into `web/`. |
+| `collect-bins.ps1` | Local build of all three boards' bins into `web/`. |
+| `.github/workflows/build-firmware.yml` | CI: rebuild + commit bins on push. |
+| `CHANGELOG.md` | History of the project and changes. |
 
 ## Notes / caveats
 
-- **BLE pairing security is OFF by default** (`REQUIRE_BLE_PAIRING 0`) so the device
-  boots reliably and BLE control just works. Set it to `1` (needs a screen) to require
-  an on-screen pairing PIN — that path is less tested on these exact boards.
-- HID keycodes assume a **US keyboard layout** on the target.
-- The **screen config** (ST7735/ST7789 rotation, inversion, offsets) is set from each
-  board's documented pinout but verify on hardware — if blank/garbled, tweak the
-  `#if USE_ST77xx` block in `setup()`. USB-HID + WiFi + BLE work regardless of the screen.
-- Whichever transport (BLE or WiFi) connects first disables the other until it
-  disconnects, so only one control path is live at a time.
+- **Controls:** the device is a composite USB **keyboard + mouse**. Drive it from the
+  hosted **`control.html`** over BLE — text, special keys, a **mouse trackpad** (drag to
+  move, tap to click), click/scroll buttons, and a **sensitivity slider**. The on-device
+  page at `http://192.168.4.1` (WiFi mode) currently does **keyboard only** (no mouse UI
+  yet, though the firmware has a `/mouse` endpoint).
+- **Button switches the radio:** the BOOT button toggles **WiFi ⇄ BLE**; only one is live
+  at a time and the screen shows which. (It does *not* auto-switch on connect.)
+- **BLE is a data service, not an OS keyboard.** Connect via `control.html` (Web
+  Bluetooth) — it will **not** show in your OS Bluetooth "add device" list, by design.
+  Web Bluetooth works in **Chrome/Edge** (Windows/macOS/Linux/Android); not iOS or Safari/Firefox.
+- **BLE pairing/security is OFF by default** (`REQUIRE_BLE_PAIRING 0`) for reliable first
+  boot. Set `1` (needs a screen) for an on-screen pairing PIN — less tested.
+- **US keyboard layout** is assumed on the target for symbols.
+- **Screens:** the Geek (ST7789) is hardware-verified. If another board's screen is
+  blank/garbled, tweak the `#if USE_ST77xx` block in `setup()` (rotation/invert/offset);
+  ST7789 needs the **software-SPI constructor** (hardware-SPI re-init lands on the wrong
+  pins → blank). USB-HID + WiFi + BLE work regardless of the screen.
+- **Flashing an S3:** while the firmware is running it won't auto-reset into the
+  bootloader over native USB — **hold BOOT while plugging in** to force download mode,
+  then flash. (The running app also re-enumerates to a different COM port than the bootloader.)
