@@ -21,6 +21,7 @@
 
 #include "USB.h"
 #include "USBHIDKeyboard.h"
+#include "USBHIDMouse.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <BLEDevice.h>
@@ -54,19 +55,25 @@
   #define TFT_MOSI 3
   #define TFT_SCLK 5
   #define TFT_BL 38
+  #define BTN_PIN 0
+  #define TXT_SIZE 1
   #define BOARD_NAME "LilyGo T-Dongle S3"
 #elif BOARD == BOARD_WAVESHARE_S3_GEEK
   #define HAS_DISPLAY 1
   #define USE_ST7789  1
+  // pins per esp-cpp/espp ws-s3-geek driver (authoritative)
   #define TFT_CS 10
-  #define TFT_DC 12
-  #define TFT_RST 7
+  #define TFT_DC 8
+  #define TFT_RST 9
   #define TFT_MOSI 11
-  #define TFT_SCLK 8
-  #define TFT_BL 9
+  #define TFT_SCLK 12
+  #define TFT_BL 7
+  #define BTN_PIN 0
+  #define TXT_SIZE 2
   #define BOARD_NAME "Waveshare ESP32-S3-Geek"
 #elif BOARD == BOARD_M5STACK_ATOMS3U
   #define HAS_DISPLAY 0
+  #define BTN_PIN 41
   #define BOARD_NAME "M5Stack AtomS3U"
 #else
   #error "Unknown BOARD"
@@ -89,11 +96,14 @@
 #define CHAR_TX_UUID "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
 
 USBHIDKeyboard Keyboard;
+USBHIDMouse Mouse;
 WebServer server(80);
+// Software-SPI constructors (exact pins) — avoids Adafruit re-begin()'ing hardware
+// SPI on the wrong default pins, which leaves the panel blank.
 #if USE_ST7735
-Adafruit_ST7735 tft = Adafruit_ST7735(&SPI, TFT_CS, TFT_DC, TFT_RST);
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 #elif USE_ST7789
-Adafruit_ST7789 tft = Adafruit_ST7789(&SPI, TFT_CS, TFT_DC, TFT_RST);
+Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 #endif
 BLEAdvertising *advertising = nullptr;
 
@@ -101,11 +111,12 @@ String apSsid, apPass;
 volatile uint32_t g_pairPin = 0;
 volatile bool g_showPin = false;
 volatile bool needRedraw = false;
-enum Mode { MODE_IDLE, MODE_WIFI, MODE_BLE };
-Mode current = MODE_IDLE;
+// Button (BTN_PIN) toggles which radio is live: 0 = WiFi AP, 1 = BLE. Exclusive.
+int radioMode = 0;
 volatile bool bleConnected = false;
 volatile int wifiClients = 0;
 bool wifiApUp = false;
+bool bleAdvOn = false;
 
 const char INDEX_HTML[] PROGMEM = R"HTML(
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
@@ -148,30 +159,40 @@ void doKey(const String &k) {
   }
 }
 
+// Mouse command bytes (all non-zero so they survive String handling):
+//   0x02 'm' dx+128 dy+128   -> relative move
+//   0x02 'c' button(1=L,2=R,4=M) -> click
+//   0x02 's' amount+128      -> scroll wheel
+void doMouse(const uint8_t *d, size_t n) {
+  if (n < 2) return;
+  if (d[1] == 'm' && n >= 4)      Mouse.move((int)d[2] - 128, (int)d[3] - 128, 0);
+  else if (d[1] == 'c' && n >= 3) Mouse.click(d[2]);
+  else if (d[1] == 's' && n >= 3) Mouse.move(0, 0, (int)d[2] - 128);
+}
+
 #if HAS_DISPLAY
 void screen(const String &l1, uint16_t c1, const String &l2, const String &l3, const String &l4) {
   tft.fillScreen(ST77XX_BLACK);
-  tft.setTextSize(1);
-  tft.setTextColor(c1);           tft.setCursor(2, 2);  tft.println(l1);
+  tft.setTextSize(TXT_SIZE);
+  const int lh = 8 * TXT_SIZE + 4;   // line height scales with text size
+  int y = 4;
+  tft.setTextColor(c1);            tft.setCursor(3, y); tft.print(l1); y += lh + 4;
   tft.setTextColor(ST77XX_WHITE);
-  tft.setCursor(2, 20); tft.println(l2);
-  tft.setCursor(2, 34); tft.println(l3);
-  tft.setCursor(2, 48); tft.println(l4);
+  tft.setCursor(3, y); tft.print(l2); y += lh;
+  tft.setCursor(3, y); tft.print(l3); y += lh;
+  tft.setCursor(3, y); tft.print(l4);
 }
 void drawScreen() {
   if (g_showPin) {
     char pin[8]; snprintf(pin, sizeof(pin), "%06u", (unsigned)g_pairPin);
-    screen("BLE PAIRING", ST77XX_MAGENTA, "Enter this PIN on", "your control device:", String(pin));
+    screen("BLE PAIRING", ST77XX_MAGENTA, "Enter PIN:", String(pin), "");
     return;
   }
-  if (current == MODE_BLE) {
-    screen("BLE CONNECTED", ST77XX_GREEN, "Typing ready.", "WiFi disabled", "");
-  } else if (current == MODE_WIFI) {
-    screen("WIFI CONNECTED", ST77XX_CYAN, "Open in browser:",
-           "http://" + WiFi.softAPIP().toString(), "");
-  } else {
-    screen(BOARD_NAME, ST77XX_YELLOW, "WiFi: " + apSsid, "Pass: " + apPass,
-           REQUIRE_BLE_PAIRING ? "BLE: PIN at pairing" : "BLE: open");
+  if (radioMode == 0) {   // WiFi active
+    screen("WiFi MODE", ST77XX_CYAN, "SSID: " + apSsid, "Pass: " + apPass, "192.168.4.1");
+  } else {                // BLE active
+    screen("BLE MODE", ST77XX_GREEN, "name: " + apSsid,
+           bleConnected ? "connected" : "advertising", "(press btn=WiFi)");
   }
 }
 #else
@@ -184,7 +205,9 @@ void genCreds() {
   char ss[20];
   snprintf(ss, sizeof(ss), "Keeb-%02X%02X", mac[4], mac[5]);
   apSsid = ss;
-#if HAS_DISPLAY
+#if defined(FIXED_PASS)
+  apPass = "type12345";   // fixed (e.g. while a screen is unavailable/being debugged)
+#elif HAS_DISPLAY
   static const char cs[] = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
   apPass = "";
   for (int i = 0; i < 8; i++) apPass += cs[esp_random() % (sizeof(cs) - 1)];  // random, shown on screen
@@ -209,6 +232,8 @@ void onWiFiEvent(WiFiEvent_t e) {
   if (e == ARDUINO_EVENT_WIFI_AP_STACONNECTED) wifiClients++;
   else if (e == ARDUINO_EVENT_WIFI_AP_STADISCONNECTED && wifiClients > 0) wifiClients--;
 }
+void startAdv() { if (!bleAdvOn) { advertising->start(); bleAdvOn = true; } }
+void stopAdv()  { if (bleAdvOn)  { advertising->stop();  bleAdvOn = false; } }
 
 class SrvCb : public BLEServerCallbacks {
   void onConnect(BLEServer *s) override { bleConnected = true; }
@@ -219,8 +244,9 @@ class RxCb : public BLECharacteristicCallbacks {
     if (g_showPin) { g_showPin = false; needRedraw = true; }
     String v = c->getValue();
     if (v.length() == 0) return;
-    if (v[0] == '\x01') doKey(v.substring(1));
-    else                Keyboard.print(v);
+    if (v[0] == '\x01')      doKey(v.substring(1));
+    else if (v[0] == '\x02') doMouse((const uint8_t *)v.c_str(), v.length());
+    else                     Keyboard.print(v);
   }
 };
 #if REQUIRE_BLE_PAIRING
@@ -232,25 +258,37 @@ class SecCb : public BLESecurityCallbacks {
 };
 #endif
 
-void updateMode() {
-  Mode desired = bleConnected ? MODE_BLE : (wifiClients > 0 ? MODE_WIFI : MODE_IDLE);
-  if (desired == current) return;
-  current = desired;
-  if (desired == MODE_BLE)       stopAP();
-  else if (desired == MODE_WIFI) advertising->stop();
-  else { if (!wifiApUp) startAP(); advertising->start(); }
+// Apply the current radioMode: bring up exactly one radio, shut the other.
+void applyRadio() {
+  if (radioMode == 0) {            // WiFi
+    stopAdv();
+    if (!wifiApUp) startAP();
+  } else {                         // BLE
+    stopAP();
+    startAdv();
+  }
   needRedraw = true;
+}
+// Poll the button; a press toggles WiFi <-> BLE.
+void pollButton() {
+  static bool last = HIGH;
+  static uint32_t t = 0;
+  bool b = digitalRead(BTN_PIN);
+  if (b != last && millis() - t > 60) {   // debounce
+    t = millis(); last = b;
+    if (b == LOW) { radioMode = !radioMode; applyRadio(); }
+  }
 }
 
 void setup() {
   Serial.begin(115200);
   Keyboard.begin();
+  Mouse.begin();
   USB.begin();
 
 #if HAS_DISPLAY
   pinMode(TFT_BL, OUTPUT);
   digitalWrite(TFT_BL, HIGH);
-  SPI.begin(TFT_SCLK, -1, TFT_MOSI, TFT_CS);
   #if USE_ST7735
     tft.initR(INITR_MINI160x80);       // 80x160 panel
     tft.setRotation(3);
@@ -265,8 +303,9 @@ void setup() {
 
   genCreds();
 
+  pinMode(BTN_PIN, INPUT_PULLUP);   // button toggles WiFi <-> BLE
   WiFi.onEvent(onWiFiEvent);
-  startAP();
+  startAP();                        // bring WiFi up before BLE init (coexistence order)
 
   BLEDevice::init(apSsid.c_str());
   BLEServer *srv = BLEDevice::createServer();
@@ -285,7 +324,7 @@ void setup() {
   advertising = BLEDevice::getAdvertising();
   advertising->addServiceUUID(SERVICE_UUID);
   advertising->setScanResponse(true);
-  advertising->start();
+  // advertising started by applyRadio() per the selected mode
 
 #if REQUIRE_BLE_PAIRING
   BLEDevice::setSecurityCallbacks(new SecCb());
@@ -299,15 +338,23 @@ void setup() {
   server.on("/", []() { server.send_P(200, "text/html", INDEX_HTML); });
   server.on("/type", HTTP_POST, []() { Keyboard.print(server.arg("plain")); server.send(200, "text/plain", "ok"); });
   server.on("/key",  HTTP_POST, []() { doKey(server.arg("plain")); server.send(200, "text/plain", "ok"); });
+  server.on("/mouse", HTTP_POST, []() { String b = server.arg("plain"); doMouse((const uint8_t *)b.c_str(), b.length()); server.send(200, "text/plain", "ok"); });
   server.begin();
 
-  current = MODE_IDLE;
+  radioMode = 0;       // start in WiFi mode
+  applyRadio();
   drawScreen();
 }
 
 void loop() {
   server.handleClient();
-  updateMode();
+  pollButton();
   if (needRedraw) { needRedraw = false; drawScreen(); }
+  static uint32_t t = 0;
+  if (millis() - t > 5000) {  // periodic status over serial
+    t = millis();
+    Serial.printf("[%s] mode=%s WiFi: %s / %s\n", BOARD_NAME,
+                  radioMode == 0 ? "WiFi" : "BLE", apSsid.c_str(), apPass.c_str());
+  }
   delay(10);
 }

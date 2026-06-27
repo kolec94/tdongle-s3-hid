@@ -17,6 +17,9 @@
   hr{border:0;border-top:1px solid #333;margin:28px 0}
   .hint{font-size:13px;color:#9ca3af}
   a{color:#60a5fa}
+  #pad{touch-action:none;height:190px;margin-top:10px;background:#1c1c1c;border:1px dashed #555;
+       border-radius:10px;display:flex;align-items:center;justify-content:center;color:#666;
+       user-select:none;font-size:14px;text-align:center}
 </style>
 </head>
 <body>
@@ -39,6 +42,15 @@
     <button class="alt keybtn" onclick="cmd('WIN')" disabled>Win/Cmd</button>
     <button class="alt keybtn" onclick="cmd('CTRL_ALT_DEL')" disabled>Ctrl+Alt+Del</button>
   </div>
+  <h2>Mouse</h2>
+  <div id="pad">drag here to move the pointer • tap to left-click</div>
+  <div class="row">
+    <button class="alt mousebtn" onclick="mclick(1)" disabled>Left click</button>
+    <button class="alt mousebtn" onclick="mclick(2)" disabled>Right click</button>
+    <button class="alt mousebtn" onclick="mclick(4)" disabled>Middle</button>
+    <button class="alt mousebtn" onclick="mscroll(-3)" disabled>Scroll ↑</button>
+    <button class="alt mousebtn" onclick="mscroll(3)" disabled>Scroll ↓</button>
+  </div>
   <div id="log"></div>
 
 <script>
@@ -48,7 +60,8 @@ let rxChar=null;
 function setConnected(on){
   document.getElementById('status').textContent = on?'connected ✓':'disconnected';
   document.getElementById('send').disabled=!on;
-  document.querySelectorAll('.keybtn').forEach(b=>b.disabled=!on);
+  document.querySelectorAll('.keybtn,.mousebtn').forEach(b=>b.disabled=!on);
+  document.getElementById('pad').style.opacity = on ? '1' : '0.4';
 }
 function log(m){ document.getElementById('log').textContent=m; }
 async function connect(){
@@ -77,6 +90,33 @@ async function cmd(name){
   try{ await rxChar.writeValue(new TextEncoder().encode('\x01'+name)); log('sent '+name); }
   catch(e){ log('send failed: '+e.message); }
 }
+
+// ---- mouse ----
+const SENS=1.6;                       // pointer sensitivity
+function clamp(v){ v=v|0; return v<-127?-127:v>127?127:v; }
+async function mwrite(arr){
+  if(!rxChar) return;
+  const b=new Uint8Array(arr);
+  try{
+    if(rxChar.writeValueWithoutResponse) await rxChar.writeValueWithoutResponse(b);
+    else await rxChar.writeValue(b);
+  }catch(e){}
+}
+function mmove(dx,dy){ mwrite([2,0x6d,(clamp(dx)+128)&0xff,(clamp(dy)+128)&0xff]); }     // 'm'
+function mclick(btn){ mwrite([2,0x63,btn]); log('mouse click'); }                          // 'c'
+function mscroll(a){ mwrite([2,0x73,(clamp(a)+128)&0xff]); }                               // 's'
+
+const pad=document.getElementById('pad');
+let pDown=false,lx=0,ly=0,ax=0,ay=0,moved=false;
+pad.addEventListener('pointerdown',e=>{ if(!rxChar)return; pDown=true;lx=e.clientX;ly=e.clientY;moved=false;
+  ax=ay=0; pad.setPointerCapture(e.pointerId); e.preventDefault(); });
+pad.addEventListener('pointermove',e=>{ if(!pDown)return;
+  ax+=e.clientX-lx; ay+=e.clientY-ly; lx=e.clientX; ly=e.clientY;
+  if(Math.abs(ax)>3||Math.abs(ay)>3) moved=true; });
+pad.addEventListener('pointerup',e=>{ if(!pDown)return; pDown=false; if(!moved) mclick(1); });
+setInterval(()=>{ if(!rxChar||(!ax&&!ay))return;
+  const dx=clamp(Math.round(ax*SENS)), dy=clamp(Math.round(ay*SENS));
+  ax=0; ay=0; if(dx||dy) mmove(dx,dy); }, 40);
 </script>
 </body>
 </html>
