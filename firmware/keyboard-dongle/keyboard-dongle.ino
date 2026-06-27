@@ -232,7 +232,7 @@ void genCreds() {
 #if defined(FIXED_PASS)
   apPass = "type12345";   // fixed (e.g. while a screen is unavailable/being debugged)
 #elif HAS_DISPLAY
-  static const char cs[] = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  static const char cs[] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";  // all caps + digits, no I/O/0/1
   apPass = "";
   for (int i = 0; i < 8; i++) apPass += cs[esp_random() % (sizeof(cs) - 1)];  // random, shown on screen
 #else
