@@ -22,6 +22,19 @@ One firmware (`firmware/keyboard-dongle`) targets all three — pick yours with 
 | **Waveshare ESP32-S3-Geek**| `2` | ST7789 240×135 | USB-A plug + screen (default) |
 | **M5Stack AtomS3U**        | `3` | none           | USB-A plug; fixed WiFi creds, no on-screen display |
 
+### Verification status
+
+All three share one firmware, but only the Geek has been run on real hardware so far:
+
+| Board | Status | Verified on hardware |
+|-------|--------|----------------------|
+| **Waveshare ESP32-S3-Geek** | ✅ **Hardware-tested** | USB keyboard, USB mouse, screen, button WiFi↔BLE toggle, and WiFi + BLE control all confirmed working. |
+| **LilyGo T-Dongle S3** | ⚠️ **Compile-only** | Builds clean; same firmware. ST7735 pins/init are the documented ones but **not yet verified on the panel**. |
+| **M5Stack AtomS3U** | ⚠️ **Compile-only** | Builds clean; same firmware. No screen (fixed pass `type12345`); button pin (GPIO41) **unverified**. |
+
+On the untested boards, USB-HID + WiFi + BLE should work (they're chip-level, proven on
+the Geek); the screen/button wiring is what may need a small per-board tweak.
+
 ## Quick start (one-click flasher, no toolchain)
 
 1. In **Chrome/Edge**, open **https://kolec94.github.io/tdongle-s3-hid/web/**

@@ -15,9 +15,13 @@ The project was reorganized around **three ESP32-S3 boards**, sharing one firmwa
 - **Changed** `REQUIRE_BLE_PAIRING` default to `0` (open BLE control) for reliable first
   boot; set to `1` to require an on-screen pairing PIN.
 - **Removed** the ESP32-C5 sketches and the superseded single-mode S3 sketches.
-- **Status:** firmware compiles for all three boards; **not yet run on physical S3
-  hardware**. USB-HID + WiFi are well-trodden on S3; screen config may need a small
-  tweak per board once tested.
+- **Added** USB **mouse** (HID) alongside the keyboard — trackpad + click/scroll in
+  `control.html`; `0x02` command over BLE and a `/mouse` WiFi endpoint.
+- **Added** a **button** (BOOT/GPIO0) that toggles WiFi↔BLE live; screen shows the mode.
+- **Status:** **Waveshare ESP32-S3-Geek is hardware-verified** (keyboard, mouse,
+  screen, button, WiFi + BLE all working). LilyGo T-Dongle S3 and M5Stack AtomS3U are
+  compile-only so far — same firmware, screen/button wiring unverified on those panels.
+  See the verification table in the README.
 
 ## Background — why it changed
 
